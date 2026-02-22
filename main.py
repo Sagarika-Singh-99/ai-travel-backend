@@ -18,16 +18,20 @@ class TripRequest(BaseModel):
     destination: str
     days: int
     vibe: str
+    currency: str = "USD"  # default to USD if not provided
 
 @app.post("/plan-trip")
 async def plan_trip(request: TripRequest):
 
     def generate():
-        for token in stream_agent(request.destination, request.days, request.vibe):
-            # SSE format: each chunk must be "data: ...\n\n"
+        for token in stream_agent(
+            request.destination,
+            request.days,
+            request.vibe,
+            request.currency
+        ):
             data = json.dumps({"token": token})
             yield f"data: {data}\n\n"
-        # Send a done signal so the frontend knows streaming is finished
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(
