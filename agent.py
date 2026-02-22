@@ -43,7 +43,7 @@ agent = create_react_agent(
     tools=[search_tool, weather_tool, budget_tool]
 )
 
-def build_prompt(destination: str, days: int, vibe: str, currency: str) -> str:
+def build_prompt(destination: str, days: int, vibe: str) -> str:
     return f"""
     You are an expert travel planner. Plan a detailed {days}-day {vibe} trip to {destination}.
 
@@ -55,8 +55,6 @@ def build_prompt(destination: str, days: int, vibe: str, currency: str) -> str:
     5. Search for practical travel tips for {destination} (transport, safety, culture)
     6. Based on all your research, write a detailed day-by-day itinerary
 
-    IMPORTANT: Show ALL prices and budget estimates in {currency} currency.
-
     Format your response as:
 
     ## 🌍 {days}-Day {vibe.title()} Trip to {destination}
@@ -65,7 +63,7 @@ def build_prompt(destination: str, days: int, vibe: str, currency: str) -> str:
     (summarize the weather for each day based on the weather_tool results)
 
     ### 💰 Estimated Budget
-    (use the budget_tool results — show daily and total cost breakdown in {currency})
+    (use the budget_tool results — show daily and total cost breakdown in USD)
 
     ### 📅 Day-by-Day Itinerary
 
@@ -80,15 +78,15 @@ def build_prompt(destination: str, days: int, vibe: str, currency: str) -> str:
     (3-5 practical tips)
     """
 
-def run_agent(destination: str, days: int, vibe: str, currency: str = "USD") -> str:
-    prompt = build_prompt(destination, days, vibe, currency)
+def run_agent(destination: str, days: int, vibe: str) -> str:
+    prompt = build_prompt(destination, days, vibe)
     result = agent.invoke({
         "messages": [{"role": "user", "content": prompt}]
     })
     return result["messages"][-1].content
 
-def stream_agent(destination: str, days: int, vibe: str, currency: str = "USD"):
-    prompt = build_prompt(destination, days, vibe, currency)
+def stream_agent(destination: str, days: int, vibe: str):
+    prompt = build_prompt(destination, days, vibe)
 
     for chunk, metadata in agent.stream(
         {"messages": [{"role": "user", "content": prompt}]},

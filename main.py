@@ -18,7 +18,7 @@ class TripRequest(BaseModel):
     destination: str
     days: int
     vibe: str
-    currency: str = "USD"  # default to USD if not provided
+    # currency removed
 
 @app.post("/plan-trip")
 async def plan_trip(request: TripRequest):
@@ -28,7 +28,6 @@ async def plan_trip(request: TripRequest):
             request.destination,
             request.days,
             request.vibe,
-            request.currency
         ):
             data = json.dumps({"token": token})
             yield f"data: {data}\n\n"
