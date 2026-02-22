@@ -1,0 +1,159 @@
+from langchain_openai import ChatOpenAI
+from langchain_tavily import TavilySearch
+from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
+from dotenv import load_dotenv
+from weather_tool import get_weather
+from budget_tool import estimate_budget
+import os
+
+# Load API keys from .env file
+load_dotenv()
+
+# ── LLM ───────────────────────────────────────────────────
+llm = ChatOpenAI(
+    model="gpt-4o-mini",
+    temperature=0.7,
+    api_key=os.getenv("OPENAI_API_KEY")
+)
+
+# ── Tavily search tool ────────────────────────────────────
+search_tool = TavilySearch(
+    max_results=5,
+    tavily_api_key=os.getenv("TAVILY_API_KEY")
+)
+
+# ── Weather tool ──────────────────────────────────────────
+@tool
+def weather_tool(destination: str, days: int) -> str:
+    """
+    Use this tool to get the weather forecast for a travel destination.
+    Input should be the city name and number of days.
+    Always use this tool when planning a trip itinerary.
+    """
+    return get_weather(destination, days)
+
+# ── Budget tool ───────────────────────────────────────────
+@tool
+def budget_tool(destination: str, days: int, vibe: str) -> str:
+    """
+    Use this tool to estimate the travel budget for a trip.
+    Input should be the city name, number of days, and travel vibe.
+    Always use this tool when planning a trip itinerary.
+    """
+    return estimate_budget(destination, days, vibe)
+
+# ── Agent ─────────────────────────────────────────────────
+agent = create_react_agent(
+    model=llm,
+    tools=[search_tool, weather_tool, budget_tool]  # ✅ all 3 tools
+)
+
+def run_agent(destination: str, days: int, vibe: str) -> str:
+    """
+    Runs the travel planning agent and returns a full itinerary.
+    """
+    prompt = f"""
+    You are an expert travel planner. Plan a detailed {days}-day {vibe} trip to {destination}.
+
+    Follow these steps:
+    1. Use the weather_tool to get the weather forecast for {destination} for {days} days
+    2. Use the budget_tool to estimate the budget for {destination} for {days} days with {vibe} vibe
+    3. Search for the top attractions and experiences in {destination} for a {vibe} traveler
+    4. Search for the best local food and restaurants in {destination}
+    5. Search for practical travel tips for {destination} (transport, safety, culture)
+    6. Based on all your research, write a detailed day-by-day itinerary
+
+    Format your response as:
+
+    ## 🌍 {days}-Day {vibe.title()} Trip to {destination}
+
+    ### 🌤️ Weather Forecast
+    (summarize the weather for each day based on the weather_tool results)
+
+    ### 💰 Estimated Budget
+    (use the budget_tool results — show daily and total cost breakdown)
+
+    ### 📅 Day-by-Day Itinerary
+
+    **Day 1: [Theme for the day]**
+    - Morning: ...
+    - Afternoon: ...
+    - Evening: ...
+
+    (continue for all {days} days)
+
+    ### 💡 Travel Tips
+    (3-5 practical tips)
+    """
+
+    result = agent.invoke({
+        "messages": [{"role": "user", "content": prompt}]
+    })
+
+    return result["messages"][-1].content
+
+
+def stream_agent(destination: str, days: int, vibe: str):
+    """
+    Streams only the final AI response tokens, skipping tool outputs.
+    """
+    prompt = f"""
+    You are an expert travel planner. Plan a detailed {days}-day {vibe} trip to {destination}.
+
+    Follow these steps:
+    1. Use the weather_tool to get the weather forecast for {destination} for {days} days
+    2. Use the budget_tool to estimate the budget for {destination} for {days} days with {vibe} vibe
+    3. Search for the top attractions and experiences in {destination} for a {vibe} traveler
+    4. Search for the best local food and restaurants in {destination}
+    5. Search for practical travel tips for {destination} (transport, safety, culture)
+    6. Based on all your research, write a detailed day-by-day itinerary
+
+    Format your response as:
+
+    ## 🌍 {days}-Day {vibe.title()} Trip to {destination}
+
+    ### 🌤️ Weather Forecast
+    (summarize the weather for each day based on the weather_tool results)
+
+    ### 💰 Estimated Budget
+    (use the budget_tool results — show daily and total cost breakdown)
+
+    ### 📅 Day-by-Day Itinerary
+
+    **Day 1: [Theme for the day]**
+    - Morning: ...
+    - Afternoon: ...
+    - Evening: ...
+
+    (continue for all {days} days)
+
+    ### 💡 Travel Tips
+    (3-5 practical tips)
+    """
+
+    for chunk, metadata in agent.stream(
+        {"messages": [{"role": "user", "content": prompt}]},
+        stream_mode="messages"
+    ):
+        # Only yield from the agent node (not tools node)
+        if metadata.get("langgraph_node") != "agent":
+            continue
+
+        content = chunk.content
+
+        # Skip empty content
+        if not content:
+            continue
+
+        # Skip list content (structured tool call messages)
+        if isinstance(content, list):
+            continue
+
+        # Skip if chunk has tool_calls attribute with content (outgoing tool calls)
+        if getattr(chunk, "tool_calls", None):
+            continue
+
+        # ✅ Only real text tokens reach here
+        yield content
+
